@@ -1,0 +1,141 @@
+services:
+  db:
+    container_name: db
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: ${USERNAME}
+      POSTGRES_PASSWORD: ${PASSWORD}
+      POSTGRES_DB: konsultfy
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    ports:
+      - "5332:5432"
+    networks:
+      - konsultfy-net
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.2
+    container_name: keycloak
+    ports:
+      - "9191:8080"
+    environment:
+      KEYCLOAK_ADMIN: ${USERNAME}
+      KEYCLOAK_ADMIN_PASSWORD: ${PASSWORD}
+
+      KC_DB: postgres
+      KC_DB_URL: ${KEYCLOAK_DB_URL}
+      KC_DB_USERNAME: ${USERNAME}
+      KC_DB_PASSWORD: ${PASSWORD}
+
+      KC_HTTP_ENABLED: true
+      KC_HOSTNAME_URL: http://localhost:9191
+      KC_HOSTNAME_STRICT: false
+
+      KC_HEALTH_ENABLED: true
+
+#      KC_HOSTNAME_STRICT_HTTPS: false
+#      KC_HOSTNAME: keycloak
+#      KC_HOSTNAME_PORT: 8080
+#      KC_HOSTNAME_STRICT: false
+#      KC_PROXY: edge
+#      KC_HOSTNAME_URL: http://localhost:9191
+    command:
+      - start-dev
+      - --import-realm
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/realms/konsultfy" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - ./.keycloak/imports:/opt/keycloak/data/import
+      - ./.keycloak/theme-and-spi:/opt/keycloak/providers
+    restart: always
+    depends_on:
+      - db
+    networks:
+      - konsultfy-net
+
+  app:
+    image: konsultfy-app:latest
+    container_name: app
+    build:
+      context: .
+      dockerfile: ./app/app.Dockerfile
+    environment:
+      NODE_ENV: production
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./app:/app
+    depends_on:
+      - db
+      - api
+    networks:
+      - konsultfy-net
+  api:
+    image: konsultfy:latest
+    container_name: api
+    build:
+      context: .
+      dockerfile: ./api/api.Dockerfile
+    environment:
+      DATASOURCE_URL: ${DATASOURCE_URL}
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      USERNAME: ${USERNAME}
+      PASSWORD: ${PASSWORD}
+      STRIPE_API_SECRET_KEY: ${STRIPE_API_SECRET_KEY}
+      AWS_REGION: ${AWS_REGION}
+      AWS_ACCESS_KEY: ${AWS_ACCESS_KEY}
+      AWS_SECRET_KEY: ${AWS_SECRET_KEY}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET}
+      ZOOM_CLIENT_ID: ${ZOOM_CLIENT_ID}
+      ZOOM_CLIENT_SECRET: ${ZOOM_CLIENT_SECRET}
+      ZOOM_REDIRECT_URI: ${ZOOM_REDIRECT_URI}
+    ports:
+      - "8888:8888"
+    restart: unless-stopped
+    command: sh -c "sleep 10 && java -jar app.jar"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      db:
+        condition: service_started
+    networks:
+      - konsultfy-net
+
+  #dev
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin4@pgadmin.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - konsultfy-net
+    restart: unless-stopped
+    depends_on:
+      - db
+  #dev
+  mail-dev:
+    image: maildev/maildev
+    container_name: maildev
+    ports:
+      - "1080:1080"
+      - "1025:1025"
+
+networks:
+  konsultfy-net:
+    driver: bridge
+volumes:
+  postgres:
+  pgadmin:
+  keycloak_data:

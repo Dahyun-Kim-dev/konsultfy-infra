@@ -1,0 +1,7 @@
+/app/
+/api/
+/keycloak-eventlistener/
+/logos/
+/swipe/
+rest-api-structure.drawio
+.env
