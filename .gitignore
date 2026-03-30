@@ -1,7 +1,22 @@
 /app/
 /api/
 /keycloak-eventlistener/
+.idea/
 /logos/
 /swipe/
 rest-api-structure.drawio
 .env
+
+.env.local
+.env.production
+# IntelliJ IDEA files
+*.iml
+out/
+gen/
+# macOS / Windows system files
+.DS_Store
+Thumbs.db
+# Ignore the actual data stored in your database volumes if you mount them locally
+# (Your Compose file uses named volumes, but this is a good safety measure)
+postgres_data/
+pgadmin_data/

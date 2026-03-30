@@ -1,4 +1,18 @@
 services:
+  nginx:
+    image: nginx:stable-alpine
+    container_name: nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+      - api
+      - keycloak
+    networks:
+      - konsultfy-net
+    restart: always
   db:
     container_name: db
     image: postgres:14-alpine
@@ -9,38 +23,25 @@ services:
     volumes:
       - postgres:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d
-    ports:
-      - "5332:5432"
     networks:
       - konsultfy-net
     restart: unless-stopped
-
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.2
     container_name: keycloak
-    ports:
-      - "9191:8080"
     environment:
       KEYCLOAK_ADMIN: ${USERNAME}
       KEYCLOAK_ADMIN_PASSWORD: ${PASSWORD}
-
       KC_DB: postgres
       KC_DB_URL: ${KEYCLOAK_DB_URL}
       KC_DB_USERNAME: ${USERNAME}
       KC_DB_PASSWORD: ${PASSWORD}
-
       KC_HTTP_ENABLED: true
-      KC_HOSTNAME_URL: http://localhost:9191
+      KC_HOSTNAME: localhost
+      KC_HTTP_RELATIVE_PATH: /auth
       KC_HOSTNAME_STRICT: false
-
       KC_HEALTH_ENABLED: true
-
-#      KC_HOSTNAME_STRICT_HTTPS: false
-#      KC_HOSTNAME: keycloak
-#      KC_HOSTNAME_PORT: 8080
-#      KC_HOSTNAME_STRICT: false
-#      KC_PROXY: edge
-#      KC_HOSTNAME_URL: http://localhost:9191
+      KC_PROXY: edge
     command:
       - start-dev
       - --import-realm
@@ -57,20 +58,17 @@ services:
       - db
     networks:
       - konsultfy-net
-
   app:
     image: konsultfy-app:latest
     container_name: app
     build:
-      context: .
-      dockerfile: ./app/app.Dockerfile
+      context: ./app
     environment:
       NODE_ENV: production
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+      VITE_ZOOM_AUTH_URL: ${VITE_ZOOM_AUTH_URL}
+      VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL}
     restart: unless-stopped
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./app:/app
     depends_on:
       - db
       - api
@@ -80,8 +78,7 @@ services:
     image: konsultfy:latest
     container_name: api
     build:
-      context: .
-      dockerfile: ./api/api.Dockerfile
+      context: ./api
     environment:
       DATASOURCE_URL: ${DATASOURCE_URL}
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
@@ -95,10 +92,7 @@ services:
       ZOOM_CLIENT_ID: ${ZOOM_CLIENT_ID}
       ZOOM_CLIENT_SECRET: ${ZOOM_CLIENT_SECRET}
       ZOOM_REDIRECT_URI: ${ZOOM_REDIRECT_URI}
-    ports:
-      - "8888:8888"
     restart: unless-stopped
-    command: sh -c "sleep 10 && java -jar app.jar"
     depends_on:
       keycloak:
         condition: service_healthy
@@ -106,7 +100,6 @@ services:
         condition: service_started
     networks:
       - konsultfy-net
-
   #dev
   pgadmin:
     container_name: pgadmin
@@ -131,7 +124,6 @@ services:
     ports:
       - "1080:1080"
       - "1025:1025"
-
 networks:
   konsultfy-net:
     driver: bridge
